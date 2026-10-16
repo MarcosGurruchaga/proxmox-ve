@@ -18,6 +18,18 @@ class IndexParser(HTMLParser):
 
 def download_file(url, target_path):
     print(f"Downloading {url} -> {target_path}...", flush=True)
+    d = os.path.dirname(target_path)
+    fn = os.path.basename(target_path)
+    
+    # Try accelerated multi-stream aria2c first
+    try:
+        ret = subprocess.run(["aria2c", "-s", "8", "-x", "8", "-k", "1M", "-c", "-d", d, "-o", fn, url])
+        if ret.returncode == 0:
+            print(f"Downloaded via aria2c: {target_path} ({os.path.getsize(target_path)} bytes)", flush=True)
+            return
+    except Exception as e:
+        print(f"aria2c failed ({e}), falling back to urllib...", flush=True)
+
     req = urllib.request.Request(url, headers={'User-Agent': 'Proxmox-Migrator'})
     with urllib.request.urlopen(req) as resp, open(target_path, 'wb') as out:
         total = int(resp.headers.get('Content-Length', 0))
