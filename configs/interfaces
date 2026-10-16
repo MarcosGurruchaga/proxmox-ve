@@ -1,0 +1,18 @@
+# Proxmox VE Network Configuration for Living Room / Home Lab Server
+# Static IP: 192.168.1.10/24, Gateway: 192.168.1.1
+# Bridge: vmbr0 (bridged to enp37s0)
+
+auto lo
+iface lo inet loopback
+
+iface enp37s0 inet manual
+
+auto vmbr0
+iface vmbr0 inet static
+	address 192.168.1.10/24
+	gateway 192.168.1.1
+	bridge-ports enp37s0
+	bridge-stp off
+	bridge-fd 0
+
+source /etc/network/interfaces.d/*
