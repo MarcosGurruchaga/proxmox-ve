@@ -46,15 +46,16 @@ def download_file(url, target_path):
     print(f"Downloaded {target_path} ({os.path.getsize(target_path)} bytes)", flush=True)
 
 def migrate_vm(vmid, name, base_url, vmdk_descriptor, os_type, cores, memory, mac, efi=False):
-    tmp_dir = f"/mnt/vm-storage/tmp_vmdk/vm{vmid}"
-    target_img_dir = f"/mnt/vm-storage/proxmox-data/images/{vmid}"
+    # Using the high-speed Kingston SSD storage pool
+    tmp_dir = f"/mnt/ssd-storage/tmp_vmdk/vm{vmid}"
+    target_img_dir = f"/mnt/ssd-storage/proxmox-data/images/{vmid}"
     os.makedirs(tmp_dir, exist_ok=True)
     os.makedirs(target_img_dir, exist_ok=True)
 
     target_qcow2 = f"{target_img_dir}/vm-{vmid}-disk-0.qcow2"
 
     print(f"\n=======================================================", flush=True)
-    print(f"Starting migration for VM {vmid}: {name}", flush=True)
+    print(f"Starting migration for VM {vmid}: {name} (Storage: ssd-storage)", flush=True)
     print(f"Target disk: {target_qcow2}", flush=True)
     print(f"=======================================================", flush=True)
 
@@ -78,9 +79,9 @@ def migrate_vm(vmid, name, base_url, vmdk_descriptor, os_type, cores, memory, ma
         else:
             print(f"File {file_path} already exists, skipping download.", flush=True)
 
-    # 2. Convert VMDK to QCOW2
+    # 2. Convert VMDK to QCOW2 on high speed SSD
     desc_path = os.path.join(tmp_dir, vmdk_descriptor)
-    print(f"\nConverting {desc_path} to {target_qcow2}...", flush=True)
+    print(f"\nConverting {desc_path} to {target_qcow2} on SSD...", flush=True)
     cmd = ["qemu-img", "convert", "-p", "-f", "vmdk", "-O", "qcow2", desc_path, target_qcow2]
     ret = subprocess.run(cmd)
     if ret.returncode != 0:
@@ -88,8 +89,8 @@ def migrate_vm(vmid, name, base_url, vmdk_descriptor, os_type, cores, memory, ma
         sys.exit(1)
     print(f"Conversion complete! Result size: {os.path.getsize(target_qcow2)} bytes", flush=True)
 
-    # 3. Create Proxmox VM
-    print(f"\nCreating Proxmox VM {vmid}...", flush=True)
+    # 3. Create or update Proxmox VM on ssd-storage
+    print(f"\nCreating Proxmox VM {vmid} on ssd-storage...", flush=True)
     subprocess.run(["qm", "destroy", str(vmid), "--purge"], stderr=subprocess.DEVNULL)
 
     create_cmd = [
@@ -99,20 +100,20 @@ def migrate_vm(vmid, name, base_url, vmdk_descriptor, os_type, cores, memory, ma
         "--memory", str(memory),
         "--cores", str(cores),
         "--cpu", "host",
-        "--sata0", f"hdd-storage:{vmid}/vm-{vmid}-disk-0.qcow2,discard=on,ssd=1",
+        "--sata0", f"ssd-storage:{vmid}/vm-{vmid}-disk-0.qcow2,discard=on,ssd=1",
         "--net0", f"e1000e={mac},bridge=vmbr0,firewall=0",
         "--boot", "order=sata0",
         "--onboot", "0"
     ]
     if efi:
-        create_cmd.extend(["--bios", "ovmf", "--efidisk0", "hdd-storage:0,efitype=4m,pre-enrolled-keys=0"])
+        create_cmd.extend(["--bios", "ovmf", "--efidisk0", "ssd-storage:0,efitype=4m,pre-enrolled-keys=0"])
 
     ret = subprocess.run(create_cmd)
     if ret.returncode != 0:
         print(f"Error creating VM {vmid}!", flush=True)
         sys.exit(1)
 
-    print(f"\nVM {vmid} created successfully!", flush=True)
+    print(f"\nVM {vmid} created successfully on ssd-storage!", flush=True)
     subprocess.run(["qm", "config", str(vmid)])
 
     # 4. Cleanup temp VMDK files
